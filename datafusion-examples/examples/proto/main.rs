@@ -21,7 +21,7 @@
 //!
 //! ## Usage
 //! ```bash
-//! cargo run --example proto -- [all|composed_extension_codec|expression_deduplication]
+//! cargo run --example proto -- [all|composed_extension_codec|expression_deduplication|scalar_function_expr]
 //! ```
 //!
 //! Each subcommand runs a corresponding example:
@@ -32,9 +32,13 @@
 //!
 //! - `expression_deduplication`
 //!   (file: expression_deduplication.rs, desc: Example of expression caching/deduplication using the codec decorator pattern)
+//!
+//! - `scalar_function_expr`
+//!   (file: scalar_function_expr.rs, desc: Minimal ScalarFunctionExpr protobuf round trip)
 
 mod composed_extension_codec;
 mod expression_deduplication;
+mod scalar_function_expr;
 
 use datafusion::error::{DataFusionError, Result};
 use strum::{IntoEnumIterator, VariantNames};
@@ -46,6 +50,7 @@ enum ExampleKind {
     All,
     ComposedExtensionCodec,
     ExpressionDeduplication,
+    ScalarFunctionExpr,
 }
 
 impl ExampleKind {
@@ -69,6 +74,9 @@ impl ExampleKind {
             ExampleKind::ExpressionDeduplication => {
                 expression_deduplication::expression_deduplication().await?
             }
+            ExampleKind::ScalarFunctionExpr => {
+                scalar_function_expr::scalar_function_expr().await?
+            }
         }
         Ok(())
     }
@@ -82,9 +90,11 @@ async fn main() -> Result<()> {
         ExampleKind::VARIANTS.join("|")
     );
 
+    println!("{}", usage);
+
     let example: ExampleKind = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| ExampleKind::All.to_string())
+        .unwrap_or_else(|| ExampleKind::ScalarFunctionExpr.to_string())
         .parse()
         .map_err(|_| DataFusionError::Execution(format!("Unknown example. {usage}")))?;
 
