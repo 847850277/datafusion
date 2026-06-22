@@ -88,33 +88,34 @@ pub async fn scalar_function_expr() -> Result<()> {
 
     println!("Step 3: Deserialized expression: {decoded_expr}");
 
-    // let batch = RecordBatch::try_new(
-    //     Arc::clone(&schema),
-    //     vec![Arc::new(Float64Array::from(vec![4.0, 9.0, 16.0]))],
-    // )?;
-    //
-    // let original = expr.evaluate(&batch)?.into_array(batch.num_rows())?;
-    // let decoded = decoded_expr
-    //     .evaluate(&batch)?
-    //     .into_array(batch.num_rows())?;
-    // let original = original
-    //     .as_any()
-    //     .downcast_ref::<Float64Array>()
-    //     .ok_or_else(|| {
-    //         DataFusionError::Execution("Expected Float64 result array".to_string())
-    //     })?;
-    // let decoded = decoded
-    //     .as_any()
-    //     .downcast_ref::<Float64Array>()
-    //     .ok_or_else(|| {
-    //         DataFusionError::Execution("Expected Float64 result array".to_string())
-    //     })?;
-    //
-    // assert_eq!(original, decoded);
-    //
-    // println!("Step 4: Evaluated both expressions successfully");
-    // println!("  input:  [4.0, 9.0, 16.0]");
-    // println!("  output: {decoded:?}");
+    // 验证反序列化的表达式、执行结果是不是和原来一样
+    let batch = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![Arc::new(Float64Array::from(vec![4.0, 9.0, 16.0]))],
+    )?;
+
+    let original = expr.evaluate(&batch)?.into_array(batch.num_rows())?;
+    let decoded = decoded_expr
+        .evaluate(&batch)?
+        .into_array(batch.num_rows())?;
+    let original = original
+        .as_any()
+        .downcast_ref::<Float64Array>()
+        .ok_or_else(|| {
+            DataFusionError::Execution("Expected Float64 result array".to_string())
+        })?;
+    let decoded = decoded
+        .as_any()
+        .downcast_ref::<Float64Array>()
+        .ok_or_else(|| {
+            DataFusionError::Execution("Expected Float64 result array".to_string())
+        })?;
+
+    assert_eq!(original, decoded);
+
+    println!("Step 4: Evaluated both expressions successfully");
+    println!("  input:  [4.0, 9.0, 16.0]");
+    println!("  output: {decoded:?}");
 
     Ok(())
 }
