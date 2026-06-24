@@ -269,6 +269,23 @@ JOIN (
 ) p USING (product_id)
 "#;
 
+const ISSUE_23138_QUERY: &str = r#"
+SELECT * FROM
+(
+SELECT
+        order_id
+    FROM
+        "warehouse"."main"."order_items"
+) oi
+JOIN (
+    SELECT
+        order_id,
+        coalesce(discount_pct, 0) AS discount_pct_2
+    FROM
+        "warehouse"."main"."orders"
+) o USING (order_id)
+"#;
+
 fn issue_22961_context() -> Result<SessionContext> {
     let ctx = SessionContext::new();
 
@@ -339,6 +356,26 @@ async fn optimized_duckdb_unparse_preserves_derived_table_scope() -> Result<()> 
     assert!(sql.contains(
         r#"ON "oi"."order_id" = "o"."order_id" INNER JOIN (SELECT "p"."product_id""#
     ));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn optimized_duckdb_unparse_resolves_columns_in_outer_query() -> Result<()> {
+    let ctx = issue_22961_context()?;
+    let plan = ctx.sql(ISSUE_23138_QUERY).await?.into_optimized_plan()?;
+    let dialect = DuckDBDialect::new();
+    let unparser = Unparser::new(&dialect);
+    let sql = unparser.plan_to_sql(&plan)?.to_string();
+
+    assert!(
+        !sql.contains(r#"INNER JOIN (SELECT "o"."order_id""#),
+        "unparsed SQL references derived table alias before it is in scope: {sql}"
+    );
+    assert!(
+        sql.contains(r#"INNER JOIN (SELECT "order_id", CASE"#),
+        "unparsed SQL should resolve columns against the derived query output: {sql}"
+    );
 
     Ok(())
 }

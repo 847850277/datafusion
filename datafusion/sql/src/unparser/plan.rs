@@ -22,8 +22,8 @@ use super::{
         SelectBuilder, TableRelationBuilder, TableWithJoinsBuilder,
     },
     rewrite::{
-        TableAliasRewriter, inject_column_aliases_into_subquery, normalize_union_schema,
-        rewrite_plan_for_sort_on_non_projected_fields,
+        ProjectionInputRewriter, TableAliasRewriter, inject_column_aliases_into_subquery,
+        normalize_union_schema, rewrite_plan_for_sort_on_non_projected_fields,
         subquery_alias_inner_query_and_columns,
     },
     utils::{
@@ -2111,12 +2111,24 @@ impl Unparser<'_> {
             // SubqueryAlias could be rewritten to a plan with a projection as the top node by [rewrite::subquery_alias_inner_query_and_columns].
             // The inner table scan could be a scan with pushdown operations.
             LogicalPlan::Projection(projection) => {
+                let input_is_projection =
+                    matches!(projection.input.as_ref(), LogicalPlan::Projection(_));
                 if let Some(plan) = self.unparse_table_scan_pushdown(
                     &projection.input,
                     alias.clone(),
                     already_projected,
                 )? {
-                    let exprs = if alias.is_some() {
+                    let exprs = if input_is_projection {
+                        let mut input_rewriter = ProjectionInputRewriter {
+                            input_schema: plan.schema().as_ref(),
+                        };
+                        projection
+                            .expr
+                            .iter()
+                            .cloned()
+                            .map(|expr| expr.rewrite(&mut input_rewriter).data())
+                            .collect::<Result<Vec<_>>>()?
+                    } else if alias.is_some() {
                         let mut alias_rewriter =
                             alias.as_ref().map(|alias_name| TableAliasRewriter {
                                 table_schema: plan.schema().as_ref(),
@@ -2138,9 +2150,13 @@ impl Unparser<'_> {
                     } else {
                         projection.expr.clone()
                     };
-                    Ok(Some(
-                        LogicalPlanBuilder::from(plan).project(exprs)?.build()?,
-                    ))
+                    Ok(Some(LogicalPlan::Projection(
+                        Projection::try_new_with_schema(
+                            exprs,
+                            Arc::new(plan),
+                            Arc::clone(&projection.schema),
+                        )?,
+                    )))
                 } else {
                     Ok(None)
                 }

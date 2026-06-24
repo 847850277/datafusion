@@ -551,6 +551,42 @@ impl TreeNodeRewriter for TableAliasRewriter<'_> {
     }
 }
 
+/// A `TreeNodeRewriter` implementation that rewrites `Expr::Column` expressions
+/// to the field names produced by an input projection.
+///
+/// This is used when a projection is rebuilt on top of another projection that
+/// will be unparsed as a derived subquery. In that SQL scope, the original table
+/// qualifier is no longer visible, and the outer projection must refer to the
+/// derived subquery's output columns by name.
+pub struct ProjectionInputRewriter<'a> {
+    pub input_schema: &'a DFSchema,
+}
+
+impl TreeNodeRewriter for ProjectionInputRewriter<'_> {
+    type Node = Expr;
+
+    fn f_down(&mut self, expr: Expr) -> Result<Transformed<Expr>> {
+        match expr {
+            Expr::Column(column) => {
+                match self
+                    .input_schema
+                    .qualified_field_from_column(&column)
+                    .or_else(|_| {
+                        self.input_schema
+                            .qualified_field_with_unqualified_name(&column.name)
+                    }) {
+                    Ok((_qualifier, field)) => {
+                        let new_column = Column::new_unqualified(field.name().clone());
+                        Ok(Transformed::yes(Expr::Column(new_column)))
+                    }
+                    Err(_) => Ok(Transformed::no(Expr::Column(column))),
+                }
+            }
+            _ => Ok(Transformed::no(expr)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
